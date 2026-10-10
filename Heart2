@@ -1,4 +1,4 @@
---// SweetHub • Triangle Crosshair
+--// SweetHub • Heart2 Crosshair
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
@@ -13,7 +13,7 @@ local GUI_NAME = "SH_CrosshairUI"
 local CLEANUP_NAME = "SweetHubCrosshairCleanup"
 
 local LOGO_ID = "rbxassetid://91565997657166"
-local CROSSHAIR_IMAGE = "rbxassetid://3750055370"
+local CROSSHAIR_IMAGE = "rbxassetid://11754490336"
 
 local CrosshairSize = 24
 local SpinSpeed = 100
