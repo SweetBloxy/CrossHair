@@ -1,0 +1,611 @@
+--// SweetHub • ❄️ Crosshair
+
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+
+local Player = Players.LocalPlayer
+local PlayerGui = Player:WaitForChild("PlayerGui")
+
+--// Settings
+
+local GUI_NAME = "SH_CrosshairUI"
+local CLEANUP_NAME = "SweetHubCrosshairCleanup"
+
+local LOGO_ID = "rbxassetid://91565997657166"
+local CROSSHAIR_IMAGE = "rbxassetid://11735801220"
+
+local CrosshairSize = 24
+local SpinSpeed = 100
+local Rotation = 0
+
+local Background = Color3.fromRGB(13, 14, 18)
+local Surface = Color3.fromRGB(23, 24, 30)
+local Surface2 = Color3.fromRGB(32, 33, 40)
+local White = Color3.fromRGB(248, 248, 252)
+local Muted = Color3.fromRGB(155, 157, 168)
+
+--// Shared Cleanup
+
+if type(_G[CLEANUP_NAME]) == "function" then
+    pcall(_G[CLEANUP_NAME])
+end
+
+local OldGui = PlayerGui:FindFirstChild(GUI_NAME)
+if OldGui then
+    OldGui:Destroy()
+end
+
+--// State
+
+local Alive = true
+local Connections = {}
+local HiddenObjects = {}
+local NativeObjects = {}
+
+local DragState
+local SliderState
+local IsMenuOpen = false
+local LastShiftLock = false
+local CheckTimer = 0
+local NativeScanTimer = 0
+
+local function Connect(Signal, Callback)
+    local Connection = Signal:Connect(Callback)
+    table.insert(Connections, Connection)
+    return Connection
+end
+
+--// UI Helpers
+
+local function New(ClassName, Properties, Parent)
+    local Object = Instance.new(ClassName)
+
+    for Property, Value in pairs(Properties) do
+        Object[Property] = Value
+    end
+
+    Object.Parent = Parent
+    return Object
+end
+
+local function Corner(Object, Radius)
+    New("UICorner", {
+        CornerRadius = UDim.new(0, Radius)
+    }, Object)
+end
+
+local function Stroke(Object, Transparency)
+    New("UIStroke", {
+        Color = White,
+        Transparency = Transparency or 0.7,
+        Thickness = 1
+    }, Object)
+end
+
+local function Label(Parent, Text, Position, Size, FontSize, Color)
+    return New("TextLabel", {
+        BackgroundTransparency = 1,
+        Position = Position,
+        Size = Size,
+        Font = Enum.Font.GothamMedium,
+        Text = Text,
+        TextColor3 = Color or White,
+        TextSize = FontSize,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextYAlignment = Enum.TextYAlignment.Center
+    }, Parent)
+end
+
+--// Screen
+
+local Gui = New("ScreenGui", {
+    Name = GUI_NAME,
+    ResetOnSpawn = false,
+    IgnoreGuiInset = true,
+    DisplayOrder = 999999,
+    ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+}, PlayerGui)
+
+--// Star Crosshair
+
+local Crosshair = New("ImageLabel", {
+    Name = "SH_StarCrosshair",
+    AnchorPoint = Vector2.new(0.5, 0.5),
+    Position = UDim2.fromScale(0.5, 0.5),
+    Size = UDim2.fromOffset(CrosshairSize, CrosshairSize),
+    BackgroundTransparency = 1,
+    Image = CROSSHAIR_IMAGE,
+    ImageColor3 = White,
+    Rotation = 0,
+    Visible = false,
+    ZIndex = 100
+}, Gui)
+
+--// Launcher
+
+local Launcher = New("ImageButton", {
+    Name = "SH_Launcher",
+    AnchorPoint = Vector2.new(0.5, 0.5),
+    Position = UDim2.fromScale(0.5, 0.5),
+    Size = UDim2.fromOffset(30, 30),
+    BackgroundColor3 = Surface,
+    Image = LOGO_ID,
+    ImageColor3 = White,
+    AutoButtonColor = false,
+    ZIndex = 20
+}, Gui)
+
+Corner(Launcher, 10)
+Stroke(Launcher)
+
+--// Settings Menu
+
+local Menu = New("Frame", {
+    Name = "SH_Settings",
+    AnchorPoint = Vector2.new(0.5, 0.5),
+    Position = UDim2.fromScale(0.5, 0.5),
+    Size = UDim2.fromOffset(220, 170),
+    BackgroundColor3 = Background,
+    Visible = false,
+    ZIndex = 30
+}, Gui)
+
+Corner(Menu, 12)
+Stroke(Menu)
+
+local Header = New("Frame", {
+    Name = "Header",
+    Size = UDim2.new(1, 0, 0, 32),
+    BackgroundColor3 = Surface,
+    BorderSizePixel = 0,
+    ZIndex = 31
+}, Menu)
+
+Corner(Header, 12)
+
+New("Frame", {
+    Position = UDim2.new(0, 0, 1, -10),
+    Size = UDim2.new(1, 0, 0, 10),
+    BackgroundColor3 = Surface,
+    BorderSizePixel = 0,
+    ZIndex = 31
+}, Header)
+
+New("ImageLabel", {
+    BackgroundTransparency = 1,
+    Position = UDim2.fromOffset(9, 6),
+    Size = UDim2.fromOffset(20, 20),
+    Image = LOGO_ID,
+    ZIndex = 32
+}, Header)
+
+local Title = Label(
+    Header,
+    "SweetHub • Star",
+    UDim2.fromOffset(34, 0),
+    UDim2.new(1, -75, 1, 0),
+    11,
+    White
+)
+Title.ZIndex = 32
+
+local CloseButton = New("TextButton", {
+    Position = UDim2.new(1, -29, 0, 5),
+    Size = UDim2.fromOffset(23, 22),
+    BackgroundColor3 = Surface2,
+    Text = "×",
+    TextColor3 = White,
+    TextSize = 18,
+    Font = Enum.Font.GothamMedium,
+    AutoButtonColor = false,
+    ZIndex = 33
+}, Header)
+
+Corner(CloseButton, 6)
+
+--// Crosshair Controls
+
+local function SetCrosshairSize(Value)
+    CrosshairSize = math.clamp(math.floor(Value + 0.5), 1, 100)
+    Crosshair.Size = UDim2.fromOffset(CrosshairSize, CrosshairSize)
+end
+
+local function SetSpinSpeed(Value)
+    SpinSpeed = math.clamp(math.floor(Value + 0.5), 1, 500)
+end
+
+local function CreateControl(TitleText, Y, Minimum, Maximum, InitialValue, Step, Callback)
+    local Container = New("Frame", {
+        BackgroundTransparency = 1,
+        Position = UDim2.fromOffset(12, Y),
+        Size = UDim2.new(1, -24, 0, 58),
+        ZIndex = 32
+    }, Menu)
+
+    local NameLabel = Label(
+        Container,
+        TitleText,
+        UDim2.fromOffset(0, 0),
+        UDim2.new(1, -45, 0, 17),
+        11,
+        White
+    )
+    NameLabel.ZIndex = 33
+
+    local ValueLabel = New("TextLabel", {
+        BackgroundTransparency = 1,
+        AnchorPoint = Vector2.new(1, 0),
+        Position = UDim2.new(1, 0, 0, 0),
+        Size = UDim2.fromOffset(45, 17),
+        Font = Enum.Font.GothamMedium,
+        TextColor3 = Muted,
+        TextSize = 10,
+        TextXAlignment = Enum.TextXAlignment.Right,
+        ZIndex = 33
+    }, Container)
+
+    local Minus = New("TextButton", {
+        Position = UDim2.fromOffset(0, 25),
+        Size = UDim2.fromOffset(24, 21),
+        BackgroundColor3 = Surface2,
+        Text = "−",
+        TextColor3 = White,
+        TextSize = 16,
+        Font = Enum.Font.GothamMedium,
+        AutoButtonColor = false,
+        ZIndex = 34
+    }, Container)
+    Corner(Minus, 5)
+
+    local Plus = New("TextButton", {
+        AnchorPoint = Vector2.new(1, 0),
+        Position = UDim2.new(1, 0, 0, 25),
+        Size = UDim2.fromOffset(24, 21),
+        BackgroundColor3 = Surface2,
+        Text = "+",
+        TextColor3 = White,
+        TextSize = 15,
+        Font = Enum.Font.GothamMedium,
+        AutoButtonColor = false,
+        ZIndex = 34
+    }, Container)
+    Corner(Plus, 5)
+
+    local Track = New("Frame", {
+        Position = UDim2.fromOffset(30, 32),
+        Size = UDim2.new(1, -60, 0, 7),
+        BackgroundColor3 = Surface2,
+        BorderSizePixel = 0,
+        ZIndex = 33
+    }, Container)
+    Corner(Track, 5)
+
+    local Fill = New("Frame", {
+        Size = UDim2.fromScale(
+            (InitialValue - Minimum) / (Maximum - Minimum),
+            1
+        ),
+        BackgroundColor3 = White,
+        BorderSizePixel = 0,
+        ZIndex = 34
+    }, Track)
+    Corner(Fill, 5)
+
+    local CurrentValue = InitialValue
+
+    local function Update(Value)
+        CurrentValue = math.clamp(
+            math.floor(Value + 0.5),
+            Minimum,
+            Maximum
+        )
+
+        Fill.Size = UDim2.fromScale(
+            (CurrentValue - Minimum) / (Maximum - Minimum),
+            1
+        )
+
+        ValueLabel.Text = tostring(CurrentValue)
+        Callback(CurrentValue)
+    end
+
+    local function UpdateFromX(X)
+        local Width = Track.AbsoluteSize.X
+        if Width <= 0 then
+            return
+        end
+
+        local Alpha = math.clamp(
+            (X - Track.AbsolutePosition.X) / Width,
+            0,
+            1
+        )
+
+        Update(Minimum + Alpha * (Maximum - Minimum))
+    end
+
+    Connect(Track.InputBegan, function(Input)
+        if Input.UserInputType == Enum.UserInputType.MouseButton1
+            or Input.UserInputType == Enum.UserInputType.Touch then
+
+            SliderState = {
+                UpdateFromX = UpdateFromX,
+                InputType = Input.UserInputType,
+                Input = Input
+            }
+
+            local X = Input.Position.X
+            if Input.UserInputType == Enum.UserInputType.MouseButton1 then
+                X = UserInputService:GetMouseLocation().X
+            end
+
+            UpdateFromX(X)
+        end
+    end)
+
+    Connect(Minus.Activated, function()
+        Update(CurrentValue - Step)
+    end)
+
+    Connect(Plus.Activated, function()
+        Update(CurrentValue + Step)
+    end)
+
+    Update(InitialValue)
+end
+
+CreateControl("Crosshair Size", 39, 1, 100, CrosshairSize, 1, SetCrosshairSize)
+CreateControl("Spin Speed", 102, 1, 500, SpinSpeed, 10, SetSpinSpeed)
+
+--// Menu Actions
+
+local function ToggleMenu()
+    IsMenuOpen = not IsMenuOpen
+    Menu.Visible = IsMenuOpen
+end
+
+Connect(CloseButton.Activated, function()
+    IsMenuOpen = false
+    Menu.Visible = false
+end)
+
+--// Dragging
+
+local function BeginDrag(Input, Kind, Object)
+    if Input.UserInputType ~= Enum.UserInputType.MouseButton1
+        and Input.UserInputType ~= Enum.UserInputType.Touch then
+        return
+    end
+
+    DragState = {
+        Kind = Kind,
+        Object = Object,
+        Input = Input,
+        InputType = Input.UserInputType,
+        StartPointer = Vector2.new(Input.Position.X, Input.Position.Y),
+        StartPosition = Object.Position,
+        Moved = false
+    }
+end
+
+Connect(Launcher.InputBegan, function(Input)
+    BeginDrag(Input, "Launcher", Launcher)
+end)
+
+Connect(Header.InputBegan, function(Input)
+    BeginDrag(Input, "Menu", Menu)
+end)
+
+Connect(UserInputService.InputChanged, function(Input)
+    if SliderState then
+        if SliderState.InputType == Enum.UserInputType.MouseButton1
+            and Input.UserInputType == Enum.UserInputType.MouseMovement then
+            SliderState.UpdateFromX(UserInputService:GetMouseLocation().X)
+        elseif SliderState.InputType == Enum.UserInputType.Touch
+            and Input.UserInputType == Enum.UserInputType.Touch
+            and Input == SliderState.Input then
+            SliderState.UpdateFromX(Input.Position.X)
+        end
+    end
+
+    if not DragState then
+        return
+    end
+
+    local IsMouseMove =
+        DragState.InputType == Enum.UserInputType.MouseButton1
+        and Input.UserInputType == Enum.UserInputType.MouseMovement
+
+    local IsTouchMove =
+        DragState.InputType == Enum.UserInputType.Touch
+        and Input.UserInputType == Enum.UserInputType.Touch
+        and Input == DragState.Input
+
+    if not IsMouseMove and not IsTouchMove then
+        return
+    end
+
+    local Pointer
+
+    if IsMouseMove then
+        Pointer = UserInputService:GetMouseLocation()
+    else
+        Pointer = Vector2.new(Input.Position.X, Input.Position.Y)
+    end
+
+    local Delta = Pointer - DragState.StartPointer
+
+    if Delta.Magnitude > 4 then
+        DragState.Moved = true
+    end
+
+    local Object = DragState.Object
+    local StartPosition = DragState.StartPosition
+
+    Object.Position = UDim2.new(
+        StartPosition.X.Scale,
+        StartPosition.X.Offset + Delta.X,
+        StartPosition.Y.Scale,
+        StartPosition.Y.Offset + Delta.Y
+    )
+end)
+
+Connect(UserInputService.InputEnded, function(Input)
+    if SliderState then
+        local SliderFinished =
+            (SliderState.InputType == Enum.UserInputType.MouseButton1
+                and Input.UserInputType == Enum.UserInputType.MouseButton1)
+            or (SliderState.InputType == Enum.UserInputType.Touch
+                and Input == SliderState.Input)
+
+        if SliderFinished then
+            SliderState = nil
+        end
+    end
+
+    if not DragState then
+        return
+    end
+
+    local DragFinished =
+        (DragState.InputType == Enum.UserInputType.MouseButton1
+            and Input.UserInputType == Enum.UserInputType.MouseButton1)
+        or (DragState.InputType == Enum.UserInputType.Touch
+            and Input == DragState.Input)
+
+    if not DragFinished then
+        return
+    end
+
+    local WasLauncher = DragState.Kind == "Launcher"
+    local WasMoved = DragState.Moved
+
+    DragState = nil
+
+    if WasLauncher and not WasMoved then
+        ToggleMenu()
+    end
+end)
+
+--// Hide Matching PlayerGui Crosshairs
+
+local function IsNativeCrosshair(Object)
+    if not Object:IsA("GuiObject") or Object:IsDescendantOf(Gui) then
+        return false
+    end
+
+    local Name = string.lower(Object.Name)
+
+    return string.find(Name, "crosshair", 1, true) ~= nil
+        or string.find(Name, "reticle", 1, true) ~= nil
+        or string.find(Name, "aimdot", 1, true) ~= nil
+        or string.find(Name, "cross", 1, true) ~= nil
+end
+
+local function HideNative(Object)
+    if not IsNativeCrosshair(Object) then
+        return
+    end
+
+    if HiddenObjects[Object] == nil then
+        HiddenObjects[Object] = Object.Visible
+        table.insert(NativeObjects, Object)
+    end
+
+    Object.Visible = false
+end
+
+for _, Object in ipairs(PlayerGui:GetDescendants()) do
+    HideNative(Object)
+end
+
+Connect(PlayerGui.DescendantAdded, function(Object)
+    task.defer(function()
+        if Alive and Gui.Parent then
+            HideNative(Object)
+        end
+    end)
+end)
+
+--// Optimized Update
+
+local Connection
+
+Connection = RunService.RenderStepped:Connect(function(DeltaTime)
+    if not Alive or not Gui.Parent then
+        Connection:Disconnect()
+        return
+    end
+
+    CheckTimer += DeltaTime
+
+    if CheckTimer >= 0.15 then
+        CheckTimer = 0
+
+        LastShiftLock =
+            UserInputService.MouseBehavior == Enum.MouseBehavior.LockCenter
+
+        if Crosshair.Visible ~= LastShiftLock then
+            Crosshair.Visible = LastShiftLock
+        end
+    end
+
+    if LastShiftLock and Crosshair.Visible and SpinSpeed > 0 then
+        Rotation = (Rotation + SpinSpeed * DeltaTime) % 360
+        Crosshair.Rotation = Rotation
+    end
+
+    NativeScanTimer += DeltaTime
+
+    if NativeScanTimer >= 1 then
+        NativeScanTimer = 0
+
+        for Index = #NativeObjects, 1, -1 do
+            local Object = NativeObjects[Index]
+
+            if not Object.Parent then
+                HiddenObjects[Object] = nil
+                table.remove(NativeObjects, Index)
+            elseif Object.Visible then
+                Object.Visible = false
+            end
+        end
+    end
+end)
+
+--// Shared Cleanup
+
+_G[CLEANUP_NAME] = function()
+    if not Alive then
+        return
+    end
+
+    Alive = false
+
+    for _, ConnectionObject in ipairs(Connections) do
+        pcall(function()
+            ConnectionObject:Disconnect()
+        end)
+    end
+
+    pcall(function()
+        Connection:Disconnect()
+    end)
+
+    for Object, WasVisible in pairs(HiddenObjects) do
+        pcall(function()
+            if Object.Parent then
+                Object.Visible = WasVisible
+            end
+        end)
+    end
+
+    if Gui.Parent then
+        Gui:Destroy()
+    end
+
+    if _G[CLEANUP_NAME] then
+        _G[CLEANUP_NAME] = nil
+    end
+end
